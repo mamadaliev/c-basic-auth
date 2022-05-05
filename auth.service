@@ -1,0 +1,12 @@
+[Unit]
+Description=Basic Auth Service
+After=network.target
+
+[Service]
+ExecStart=/usr/local/sbin/auth -r / -p 8080
+KillMode=process
+User=root
+Group=root
+
+[Install]
+WantedBy=multi-user.target

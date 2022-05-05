@@ -55,9 +55,9 @@ bool is_access_allowed_by_username_and_password(const char *username, const char
 }
 
 int is_authorized(char *encoded_credentials) {
-    printf("EC: %s\n", encoded_credentials);
+    // printf("EC: %s\n", encoded_credentials);
     char *decoded_credentials = base64_decode(encoded_credentials);
-    printf("DC: %s\n", decoded_credentials);
+    // printf("DC: %s\n", decoded_credentials);
     char **data = get_credentials_by_decoded_basic_auth(decoded_credentials);
     return is_access_allowed_by_username_and_password(data[0], data[1]);
 }

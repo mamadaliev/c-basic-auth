@@ -68,8 +68,9 @@ int main(int argc, char *argv[]) {
                 exit(1);
         }
 
-    printf("Server started at port no. %s%s%s with root directory as %s%s%s\n", "\033[92m", PORT, "\033[0m", "\033[92m",
-           ROOT, "\033[0m");
+    printf("Server started at port no. %s%s%s with root directory as %s%s%s.\n"
+           "Current UID: %u\n", "\033[92m", PORT, "\033[0m", "\033[92m",
+           ROOT, "\033[0m", getuid());
     printf("============================================\n");
     printf("\n");
     // Setting all elements to -1: signifies there is no client connected
@@ -141,7 +142,7 @@ void get_req_resource(char *file_path, int client, char *auth_data) {
         send(client, "WWW-Authenticate: Basic realm=\"Realm\"\n", 38, 0);
         return;
     } else {
-        printf("Got Auth...%s\n", auth_data);
+        //printf("Got Auth...%s\n", auth_data);
         int auth_data_size = strlen(auth_data);
         char auth_type[5];
         memcpy(auth_type, &auth_data[15], 5);
@@ -177,68 +178,77 @@ void get_req_resource(char *file_path, int client, char *auth_data) {
                 char **data = get_credentials_by_decoded_basic_auth(decoded_credentials);
 
                 const char *username = data[0];
-                struct passwd *p;
-                char *user_directory = "/"; // by default as root
-                int is_root_user = 1;
+                struct passwd *pwd;
+                //printf("UID: %u\n", p->pw_uid);
 
-                if ((p = getpwnam(username)) != NULL) {
-                    user_directory = p->pw_dir;
-                    if (p->pw_gid != 0) {
+                char *user_directory = "/"; // by default as root
+                //int is_root_user = 1;
+
+                if ((pwd = getpwnam(username)) != NULL) {
+                    user_directory = pwd->pw_dir;
+
+                    printf("Current UID: %u\n", pwd->pw_uid);
+
+                    setuid(pwd->pw_uid); // set current user id as process owner
+
+                    /*if (pwd->pw_gid != 0) {
                         is_root_user = -1;
-                    }
+                    }*/
                 }
 
-                realpath(directory_path, absolute_directory_path);
+                if (strcmp(directory_path, "/") == 0) {
+                    strcpy(absolute_directory_path, "");
+                } else {
+                    realpath(directory_path, absolute_directory_path);
+                }
+
                 struct dirent **files;
                 int n;
 
-                if ((fd = open(absolute_path, O_RDONLY)) != -1)    //FILE FOUND
+                if ((fd = open(absolute_path, O_RDONLY)) != -1)
                 {
-                    if (is_root_user == 1 || strncmp(user_directory, absolute_path, strlen(user_directory)) == 0) {
-                        send(client, "HTTP/1.0 200 OK\n\n", 17, 0);
+                    send(client, "HTTP/1.0 200 OK\n\n", 17, 0);
 
-                        if (is_directory(file_path) == 1) {
-                            n = scandir(directory_path, &files, 0, alphasort_desc);
-                            if (n < 0)
-                                perror("scandir");
-                            else {
-                                while (n--) {
-                                    char line[255];
-                                    snprintf(line,
-                                             sizeof(absolute_directory_path) + strlen(files[n]->d_name) + 20, "<a href=\"%s/%s\">%s</a><br>",
-                                             absolute_directory_path,
-                                             files[n]->d_name, files[n]->d_name);
-                                    write(client, line, strlen(line) + 1);
-                                    free(files[n]);
+                    if (is_directory(file_path) == 1) {
+                        n = scandir(directory_path, &files, 0, alphasort_desc);
+                        if (n < 0)
+                            perror("scandir");
+                        else {
+                            while (n--) {
+                                char line[255];
+
+                                /*if (strcmp(absolute_directory_path, "/") == 0) {
+                                    strcpy(absolute_directory_path, "//");
                                 }
-                                free(files);
+                                if (strcmp(absolute_directory_path, "") == 0) {
+                                    strcpy(absolute_directory_path, "/");
+                                }*/
+
+                                snprintf(line,
+                                         sizeof(absolute_directory_path) + (2 * strlen(files[n]->d_name)) + 20,
+                                         "<a href=\"%s/%s\">%s</a><br>",
+                                         absolute_directory_path,
+                                         files[n]->d_name, files[n]->d_name);
+                                write(client, line, strlen(line) + 1);
+                                free(files[n]);
                             }
-                        } else {
-                            while ((bytes_read = read(fd, data_to_send, BYTES)) > 0) {
-                                write(client, data_to_send, bytes_read);
-                            }
+                            free(files);
                         }
                     } else {
-                        close(fd);
-
-                        char buff[255];
-                        char *format = "<html><h3>ACCESS DENIED</h3><br><a href=\"%s\">Home</a></html>";
-                        sprintf(buff, format, user_directory, strlen(user_directory) + 58);
-                        printf("Access Denied\n"); // <a href=\"%s\">Home</>"
-                        send(client, "HTTP/1.0 400 Bad Request\n\n", 26, 0);
-                        write(client, buff, strlen(buff));
+                        while ((bytes_read = read(fd, data_to_send, BYTES)) > 0) {
+                            write(client, data_to_send, bytes_read);
+                        }
                     }
                     close(fd);
                 } else {
                     char buff[255];
-                    char *format = "<html><h3>PAGE NOT FOUND</h3><br><a href=\"%s\">Home</a></html>";
+                    char *format = "<html><h3>ACCESS DENIED</h3><a href=\"%s\">Home</a></html>";
                     sprintf(buff, format, user_directory, strlen(user_directory) + 58);
-                    printf("Not Found\n");
-                    send(client, "HTTP/1.0 404 Not Found\n\n", 24, 0);
+                    send(client, "HTTP/1.0 400 Bad Request\n\n", 26, 0);
                     write(client, buff, strlen(buff));
                 }
             } else {
-                char* buff = "<html><h3>UNAUTHORIZED</h3><br><a href=\"/\">Home</a></html>";
+                char *buff = "<html><h3>UNAUTHORIZED</h3><a href=\"/\">Home</a></html>";
                 printf("Unauthorized\n");
                 write(client, "HTTP/1.0 401 Unauthorized\n\n", 28);
                 write(client, buff, strlen(buff));
