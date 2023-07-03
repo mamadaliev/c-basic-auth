@@ -1,5 +1,5 @@
-# basic-auth
-
+# c-basic-auth
+The basic type authentication in the C programming language.
 
 ## Getting Started
 Clone this project and open project directory from your terminal.
